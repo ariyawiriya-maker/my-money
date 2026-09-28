@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <!-- กำหนด Viewport ป้องกันการย่อขยายบนมือถือเพื่ออารมณ์แบบ Native App -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>พารวย - บันทึกรายรับ รายจ่าย</title>
+  
+  <!-- Web App Meta Tags สำหรับ iOS / Android -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#10b981">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  
+  <style>
+    /* ป้องกันการคลุมดำ/ไฮไลต์ข้อความเวลาแตะบนมือถือ */
+    body {
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+      /* รองรับ Safe Area ของ iPhone */
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    input, select {
+      -webkit-user-select: text;
+      user-select: text;
+    }
+    /* สไตล์ปุ่มเวลาแตะบนมือถือ */
+    .btn-active:active {
+      transform: scale(0.96);
+      opacity: 0.85;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen pb-12">
+
+  <!-- Header แบบติดขอบบน (Fixed Top Bar) -->
+  <header class="sticky top-0 z-30 bg-emerald-600 text-white p-4 shadow-md flex justify-between items-center">
+    <div class="flex items-center gap-2">
+      <i class="fa-solid fa-wallet text-xl"></i>
+      <h1 class="font-bold text-lg tracking-wide">พารวย (Mobile)</h1>
+    </div>
+    <button onclick="fetchSheetData()" class="px-3 py-1.5 bg-emerald-700 active:bg-emerald-800 text-xs rounded-full flex items-center gap-1.5 transition">
+      <i class="fa-solid fa-rotate" id="refresh-icon"></i> รีเฟรช
+    </button>
+  </header>
+
+  <main class="max-w-md mx-auto p-4 space-y-4">
+
+    <!-- Card สรุปยอดเงิน (2x2 Grid) -->
+    <div class="grid grid-cols-2 gap-2.5">
+      <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-200/80">
+        <p class="text-[11px] text-slate-500 font-medium">ยอดยกมา</p>
+        <p class="text-base font-bold text-slate-700 mt-0.5 truncate" id="sum-carried">฿0.00</p>
+      </div>
+      <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-200/80">
+        <p class="text-[11px] text-slate-500 font-medium">สรุปรายรับ</p>
+        <p class="text-base font-bold text-emerald-600 mt-0.5 truncate" id="sum-income">฿0.00</p>
+      </div>
+      <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-200/80">
+        <p class="text-[11px] text-slate-500 font-medium">สรุปรายจ่าย</p>
+        <p class="text-base font-bold text-rose-600 mt-0.5 truncate" id="sum-expense">฿0.00</p>
+      </div>
+      <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-200/80 bg-blue-50/30">
+        <p class="text-[11px] text-slate-500 font-medium">ยอดคงเหลือ</p>
+        <p class="text-base font-bold text-blue-600 mt-0.5 truncate" id="sum-balance">฿0.00</p>
+      </div>
+    </div>
+
+    <!-- ฟอร์มกรอกข้อมูล -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200/80 space-y-3">
+      <h2 class="text-sm font-semibold text-slate-700 flex items-center gap-1.5 border-b pb-2">
+        <i class="fa-solid fa-pen-to-square text-emerald-600"></i> บันทึกรายการใหม่
+      </h2>
+      
+      <form id="txForm" onsubmit="submitTransaction(event)" class="space-y-3">
+        
+        <!-- ประเภท รายรับ/รายจ่าย (Segmented Toggle ปุ่มใหญ่กดง่าย) -->
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">ประเภทรายการ</label>
+          <div class="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
+            <button type="button" id="btnTypeExpense" onclick="setType('EXPENSE')" class="py-2 text-xs font-bold rounded-lg transition text-slate-600">
+              <i class="fa-solid fa-arrow-down-long text-rose-500 mr-1"></i> รายจ่าย
+            </button>
+            <button type="button" id="btnTypeIncome" onclick="setType('INCOME')" class="py-2 text-xs font-bold rounded-lg transition text-slate-600">
+              <i class="fa-solid fa-arrow-up-long text-emerald-500 mr-1"></i> รายรับ
+            </button>
+          </div>
+          <input type="hidden" id="txType" value="EXPENSE">
+        </div>
+
+        <!-- วันที่ -->
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">วันที่</label>
+          <input type="date" id="txDate" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+        </div>
+
+        <!-- หมวดหมู่หลัก -->
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">หมวดหมู่หลัก</label>
+          <select id="mainCat" onchange="updateSubCategories()" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+          </select>
+        </div>
+
+        <!-- หมวดหมูีย่อย -->
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">รายการย่อย</label>
+          <select id="subCat" onchange="handleSubCategoryChange()" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+          </select>
+        </div>
+
+        <!-- ช่องใส่จำนวนเงิน (คลิกเพื่อเปิด Keypad) -->
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">จำนวนเงิน (บาท)</label>
+          <div onclick="openKeypad()" class="w-full p-3 bg-slate-50 border-2 border-emerald-500/40 rounded-xl flex justify-between items-center cursor-pointer active:bg-slate-100 transition">
+            <span class="text-xs text-slate-400 font-medium">แตะเพื่อระบุยอด</span>
+            <input type="text" id="amount" readonly placeholder="0.00" required class="bg-transparent text-right font-mono text-xl font-bold text-emerald-600 pointer-events-none w-full outline-none">
+          </div>
+        </div>
+
+        <!-- หมายเหตุ -->
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">หมายเหตุ <span id="note-required-tag" class="text-rose-500 hidden">(จำเป็นสำหรับรายการอื่น ๆ)</span></label>
+          <input type="text" id="note" placeholder="บันทึกรายละเอียด..." class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+        </div>
+
+        <!-- ปุ่มบันทึก -->
+        <button type="submit" id="submitBtn" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 btn-active text-white font-bold text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2 mt-2">
+          <i class="fa-solid fa-circle-check text-base"></i> บันทึกข้อมูล
+        </button>
+      </form>
+    </div>
+
+  </main>
+
+  <!-- Keypad Modal แบบ Bottom Sheet (ขึ้นมาจากด้านล่างจอ สไตล์ App มือถือ) -->
+  <div id="keypadModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end justify-center hidden z-50">
+    <div class="bg-white w-full max-w-md rounded-t-3xl p-5 shadow-2xl space-y-4 animate-slide-up">
+      <div class="flex justify-between items-center border-b pb-3">
+        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">ระบุจำนวนเงิน</span>
+        <button onclick="closeKeypad()" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 active:bg-slate-200">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      
+      <!-- หน้าจอแสดงตัวเลข Keypad -->
+      <div class="bg-slate-100 p-3.5 rounded-2xl text-right font-mono text-3xl font-bold text-slate-800 min-h-[60px] flex items-center justify-end overflow-x-auto border border-slate-200" id="keypadDisplay">
+        0
+      </div>
+
+      <!-- ปุ่มกด Keypad -->
+      <div class="grid grid-cols-3 gap-2.5">
+        <button type="button" onclick="pressKey('1')" class="py-3.5 bg-slate-50 btn-active font-bold text-xl rounded-xl text-slate-700 shadow-sm border border-slate-200">1</button>
+        <button type="button" onclick="pressKey('2')" class="py-3.5 bg-slate-50 btn-active font-bold text-xl rounded-xl text-slate-700 shadow-sm border border-slate-200">2</button>
+        <button type="button" onclick="pressKey('3')" class="py-3.5 bg-slate-50 btn-active font-bold text-xl rounded-xl text-slate-700 shadow-sm border border-slate-200">3</button>
+        <button type="button" onclick="pressKey('4')" class="py-3.5 bg-slate-50 btn-active font-bold text-xl rounded-xl text-slate-700 shadow-sm border border-slate-200">4</button>
+        <button type="button" onclick="pressKey('5')" class="py-3.5 bg-slate-50 btn-active font-bold text-xl rounded-xl text-slate-700 shadow-sm border border-slate-200">5</button>
+        <button type="button" onclick="pressKey('6')" class="py-3.5 bg-slate-50 btn-active font-bold text-xl rounded-xl text-slate-700 shadow-sm border border-slate-200">6</button>
+        <button type="button" onclick="pressKey('7')" class="py-3.5 bg-slate-50 btn-active font-bold text-xl rounded-xl text-slate-700 shadow-sm border border-slate-200">7</button>
+        <button type="button" onclick="pressKey('8')" class="py-3.5 bg-slate-50 btn-active font-bold text-xl rounded-xl text-slate-700 shadow-sm border border-slate-200">8</button>
+        <button type="button" onclick="pressKey('9')" class="py-3.5 bg-slate-50 btn-active font-bold text-xl rounded-xl text-slate-700 shadow-sm border border-slate-200">9</button>
+        <button type="button" onclick="pressKey('.')" class="py-3.5 bg-slate-50 btn-active font-bold text-xl rounded-xl text-slate-700 shadow-sm border border-slate-200">.</button>
+        <button type="button" onclick="pressKey('0')" class="py-3.5 bg-slate-50 btn-active font-bold text-xl rounded-xl text-slate-700 shadow-sm border border-slate-200">0</button>
+        <button type="button" onclick="pressKey('DEL')" class="py-3.5 bg-rose-50 btn-active text-rose-600 font-bold text-xl rounded-xl shadow-sm border border-rose-100 flex items-center justify-center">
+          <i class="fa-solid fa-backspace"></i>
+        </button>
+      </div>
+
+      <button type="button" onclick="confirmKeypad()" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 btn-active text-white font-bold text-base rounded-xl transition shadow-md">
+        ยืนยันจำนวนเงิน
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyRqVjyW3Pt4WdJcpUunOlxoR4Ct6IzcvQikSM734yAwqn7u5lewlsBLy5GUC8KVNVw/exec"; // วาง Web App URL จาก Google Apps Script ที่นี่
+
+    const categoryTree = {
+      INCOME: {
+        "รายได้จากการดำเนินงาน": ["เงินเดือน/ค่าจ้าง", "โบนัส", "รายได้ขายสินค้า/บริการ", "รายการอื่น ๆ (ระบุในหมายเหตุ)"],
+        "รายได้ทางการเงิน/อื่นๆ": ["ดอกเบี้ยรับ", "เงินปันผล", "กำไรจากการลงทุน", "รายการอื่น ๆ (ระบุในหมายเหตุ)"]
+      },
+      EXPENSE: {
+        "ต้นทุน/ค่าใช้จ่ายส่วนตัว": ["อาหาร/เครื่องดื่ม", "ค่าที่พัก/ค่าน้ำ-ไฟ", "เดินทาง/น้ำมัน", "รายการอื่น ๆ (ระบุในหมายเหตุ)"],
+        "ค่าใช้จ่ายในการบริหาร": ["อุปกรณ์/ซอฟต์แวร์", "ค่าธรรมเนียม", "การศึกษา/ฝึกอบรม", "รายการอื่น ๆ (ระบุในหมายเหตุ)"],
+        "ภาระผูกพัน/หนี้สิน": ["ชำระบัตรเครดิต", "ผ่อนบ้าน/รถ", "เบี้ยประกัน", "รายการอื่น ๆ (ระบุในหมายเหตุ)"]
+      }
+    };
+
+    let currentKeypadValue = "0";
+
+    window.onload = () => {
+      document.getElementById('txDate').valueAsDate = new Date();
+      setType('EXPENSE');
+      fetchSheetData();
+    };
+
+    function setType(type) {
+      document.getElementById('txType').value = type;
+      const btnExpense = document.getElementById('btnTypeExpense');
+      const btnIncome = document.getElementById('btnTypeIncome');
+
+      if (type === 'EXPENSE') {
+        btnExpense.className = "py-2 text-xs font-bold rounded-lg transition bg-white text-rose-600 shadow-sm";
+        btnIncome.className = "py-2 text-xs font-bold rounded-lg transition text-slate-500 hover:text-slate-700";
+      } else {
+        btnIncome.className = "py-2 text-xs font-bold rounded-lg transition bg-white text-emerald-600 shadow-sm";
+        btnExpense.className = "py-2 text-xs font-bold rounded-lg transition text-slate-500 hover:text-slate-700";
+      }
+      updateCategories();
+    }
+
+    function updateCategories() {
+      const type = document.getElementById('txType').value;
+      const mainSelect = document.getElementById('mainCat');
+      mainSelect.innerHTML = "";
+
+      Object.keys(categoryTree[type]).forEach(cat => {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        opt.textContent = cat;
+        mainSelect.appendChild(opt);
+      });
+
+      updateSubCategories();
+    }
+
+    function updateSubCategories() {
+      const type = document.getElementById('txType').value;
+      const mainCat = document.getElementById('mainCat').value;
+      const subSelect = document.getElementById('subCat');
+      subSelect.innerHTML = "";
+
+      if (categoryTree[type] && categoryTree[type][mainCat]) {
+        categoryTree[type][mainCat].forEach(sub => {
+          const opt = document.createElement('option');
+          opt.value = sub;
+          opt.textContent = sub;
+          subSelect.appendChild(opt);
+        });
+      }
+      handleSubCategoryChange();
+    }
+
+    function handleSubCategoryChange() {
+      const subCat = document.getElementById('subCat').value;
+      const noteInput = document.getElementById('note');
+      const noteTag = document.getElementById('note-required-tag');
+
+      if (subCat && subCat.includes("รายการอื่น ๆ")) {
+        noteInput.required = true;
+        noteTag.classList.remove('hidden');
+      } else {
+        noteInput.required = false;
+        noteTag.classList.add('hidden');
+      }
+    }
+
+    // Keypad Logic
+    function openKeypad() {
+      currentKeypadValue = document.getElementById('amount').value || "0";
+      updateKeypadDisplay();
+      document.getElementById('keypadModal').classList.remove('hidden');
+    }
+
+    function closeKeypad() {
+      document.getElementById('keypadModal').classList.add('hidden');
+    }
+
+    function pressKey(key) {
+      if (key === 'DEL') {
+        currentKeypadValue = currentKeypadValue.slice(0, -1);
+        if (currentKeypadValue === "" || currentKeypadValue === "-") currentKeypadValue = "0";
+      } else if (key === '.') {
+        if (!currentKeypadValue.includes('.')) {
+          currentKeypadValue += '.';
+        }
+      } else {
+        if (currentKeypadValue === "0") {
+          currentKeypadValue = key;
+        } else {
+          currentKeypadValue += key;
+        }
+      }
+      updateKeypadDisplay();
+    }
+
+    function updateKeypadDisplay() {
+      document.getElementById('keypadDisplay').textContent = currentKeypadValue;
+    }
+
+    function confirmKeypad() {
+      document.getElementById('amount').value = parseFloat(currentKeypadValue || 0).toFixed(2);
+      closeKeypad();
+    }
+
+    // Fetch Data
+    async function fetchSheetData() {
+      const icon = document.getElementById('refresh-icon');
+      icon.classList.add('fa-spin');
+
+      try {
+        if (!GAS_API_URL || GAS_API_URL.includes("https://script.google.com/macros/s/AKfycbyRqVjyW3Pt4WdJcpUunOlxoR4Ct6IzcvQikSM734yAwqn7u5lewlsBLy5GUC8KVNVw/exec")) {
+          icon.classList.remove('fa-spin');
+          return;
+        }
+
+        const response = await fetch(GAS_API_URL);
+        const result = await response.json();
+
+        if (result.result === "success") {
+          calculateSummary(result.data);
+        }
+      } catch (err) {
+        console.error("Fetch Error:", err);
+      } finally {
+        icon.classList.remove('fa-spin');
+      }
+    }
+
+    function calculateSummary(rows) {
+      let carriedOver = 0.00;
+      let totalIncome = 0.00;
+      let totalExpense = 0.00;
+
+      rows.forEach(row => {
+        const type = row[1];
+        const amount = parseFloat(row[4]) || 0;
+
+        if (type === "INCOME") {
+          totalIncome += amount;
+        } else if (type === "EXPENSE") {
+          totalExpense += amount;
+        }
+      });
+
+      const netBalance = carriedOver + totalIncome - totalExpense;
+
+      document.getElementById('sum-carried').textContent = `฿${carriedOver.toLocaleString('th-TH', {minimumFractionDigits: 2})}`;
+      document.getElementById('sum-income').textContent = `฿${totalIncome.toLocaleString('th-TH', {minimumFractionDigits: 2})}`;
+      document.getElementById('sum-expense').textContent = `฿${totalExpense.toLocaleString('th-TH', {minimumFractionDigits: 2})}`;
+      document.getElementById('sum-balance').textContent = `฿${netBalance.toLocaleString('th-TH', {minimumFractionDigits: 2})}`;
+    }
+
+    // Submit Transaction
+    async function submitTransaction(e) {
+      e.preventDefault();
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> กำลังบันทึก...`;
+
+      const payload = {
+        date: document.getElementById('txDate').value,
+        type: document.getElementById('txType').value,
+        mainCategory: document.getElementById('mainCat').value,
+        subCategory: document.getElementById('subCat').value,
+        amount: document.getElementById('amount').value,
+        note: document.getElementById('note').value
+      };
+
+      try {
+        await fetch(GAS_API_URL, {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+
+        document.getElementById('amount').value = "";
+        document.getElementById('note').value = "";
+        handleSubCategoryChange();
+        await fetchSheetData();
+        alert("บันทึกสำเร็จ!");
+      } catch (err) {
+        alert("เกิดข้อผิดพลาดในการบันทึก");
+        console.error(err);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-circle-check text-base"></i> บันทึกข้อมูล`;
+      }
+    }
+  </script>
+</body>
+</html>
